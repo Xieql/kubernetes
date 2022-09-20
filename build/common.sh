@@ -91,7 +91,7 @@ readonly KUBE_CONTAINER_RSYNC_PORT=8730
 
 # These are the default versions (image tags) for their respective base images.
 readonly __default_distroless_iptables_version=v0.1.1
-readonly __default_go_runner_version=v2.3.1-go1.19-bullseye.0
+readonly __default_go_runner_version=v2.3.1-go1.19.1-bullseye.0
 readonly __default_setcap_version=bullseye-v1.3.0
 
 # These are the base images for the Docker-wrapped binaries.
@@ -565,7 +565,7 @@ function kube::build::run_build_command_ex() {
 }
 
 function kube::build::rsync_probe {
-  # Wait unil rsync is up and running.
+  # Wait until rsync is up and running.
   local tries=20
   while (( tries > 0 )) ; do
     if rsync "rsync://k8s@${1}:${2}/" \
