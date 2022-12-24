@@ -1,3 +1,6 @@
+//go:build !windows
+// +build !windows
+
 /*
 Copyright 2017 The Kubernetes Authors.
 
@@ -132,7 +135,7 @@ func NewFakeProxier(ipt utiliptables.Interface, ipvs utilipvs.Interface, ipset u
 	}
 	p := &Proxier{
 		exec:                  fexec,
-		serviceMap:            make(proxy.ServiceMap),
+		svcPortMap:            make(proxy.ServicePortMap),
 		serviceChanges:        proxy.NewServiceChangeTracker(newServiceInfo, ipFamily, nil, nil),
 		endpointsMap:          make(proxy.EndpointsMap),
 		endpointsChanges:      proxy.NewEndpointChangeTracker(testHostname, nil, ipFamily, nil, nil),
@@ -670,6 +673,8 @@ func TestNodePortIPv4(t *testing.T) {
 					JumpChain: "ACCEPT", MatchSet: kubeHealthCheckNodePortSet,
 				}},
 				string(kubeServicesChain): {{
+					JumpChain: "RETURN", SourceAddress: "127.0.0.0/8",
+				}, {
 					JumpChain: string(kubeMarkMasqChain), MatchSet: kubeClusterIPSet,
 				}, {
 					JumpChain: string(kubeNodePortChain), MatchSet: "",
@@ -895,7 +900,7 @@ func TestNodePortIPv4(t *testing.T) {
 						Protocol: v1.ProtocolSCTP,
 						NodePort: int32(3001),
 					}}
-					svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
+					svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyLocal
 				}),
 			},
 			endpoints: []*discovery.EndpointSlice{
@@ -1927,7 +1932,7 @@ func TestOnlyLocalExternalIPs(t *testing.T) {
 				Protocol:   v1.ProtocolTCP,
 				TargetPort: intstr.FromInt(svcPort),
 			}}
-			svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
+			svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyLocal
 		}),
 	)
 	epIP := "10.180.0.1"
@@ -2052,6 +2057,8 @@ func TestLoadBalancer(t *testing.T) {
 	// Check iptables chain and rules
 	epIpt := netlinktest.ExpectedIptablesChain{
 		string(kubeServicesChain): {{
+			JumpChain: "RETURN", SourceAddress: "127.0.0.0/8",
+		}, {
 			JumpChain: string(kubeLoadBalancerChain), MatchSet: kubeLoadBalancerSet,
 		}, {
 			JumpChain: string(kubeMarkMasqChain), MatchSet: kubeClusterIPSet,
@@ -2091,7 +2098,7 @@ func TestOnlyLocalNodePorts(t *testing.T) {
 				Protocol: v1.ProtocolTCP,
 				NodePort: int32(svcNodePort),
 			}}
-			svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
+			svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyLocal
 		}),
 	)
 
@@ -2152,6 +2159,8 @@ func TestOnlyLocalNodePorts(t *testing.T) {
 	// Check iptables chain and rules
 	epIpt := netlinktest.ExpectedIptablesChain{
 		string(kubeServicesChain): {{
+			JumpChain: "RETURN", SourceAddress: "127.0.0.0/8",
+		}, {
 			JumpChain: string(kubeMarkMasqChain), MatchSet: kubeClusterIPSet,
 		}, {
 			JumpChain: string(kubeNodePortChain), MatchSet: "",
@@ -2189,14 +2198,14 @@ func TestHealthCheckNodePort(t *testing.T) {
 			Protocol: v1.ProtocolTCP,
 			NodePort: int32(svcNodePort),
 		}}
-		svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
+		svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyLocal
 	})
 
 	svc1, svc2, invalidSvc3 := *sampleSvc, *sampleSvc, *sampleSvc
 	svc1.Name, svc1.Spec.HealthCheckNodePort = "valid-svc1", 30000
 	svc2.Name, svc2.Spec.HealthCheckNodePort = "valid-svc2", 30001
 	// make svc3 invalid by setting external traffic policy to cluster
-	invalidSvc3.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeCluster
+	invalidSvc3.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyCluster
 	invalidSvc3.Name, invalidSvc3.Spec.HealthCheckNodePort = "invalid-svc3", 30002
 
 	makeServiceMap(fp,
@@ -2324,6 +2333,8 @@ func TestLoadBalancerSourceRanges(t *testing.T) {
 	// Check iptables chain and rules
 	epIpt := netlinktest.ExpectedIptablesChain{
 		string(kubeServicesChain): {{
+			JumpChain: "RETURN", SourceAddress: "127.0.0.0/8",
+		}, {
 			JumpChain: string(kubeLoadBalancerChain), MatchSet: kubeLoadBalancerSet,
 		}, {
 			JumpChain: string(kubeMarkMasqChain), MatchSet: kubeClusterIPSet,
@@ -2403,6 +2414,7 @@ func TestAcceptIPVSTraffic(t *testing.T) {
 	// Check iptables chain and rules
 	epIpt := netlinktest.ExpectedIptablesChain{
 		string(kubeServicesChain): {
+			{JumpChain: "RETURN", SourceAddress: "127.0.0.0/8"},
 			{JumpChain: string(kubeLoadBalancerChain), MatchSet: kubeLoadBalancerSet},
 			{JumpChain: string(kubeMarkMasqChain), MatchSet: kubeClusterIPSet},
 			{JumpChain: string(kubeMarkMasqChain), MatchSet: kubeExternalIPSet},
@@ -2441,7 +2453,7 @@ func TestOnlyLocalLoadBalancing(t *testing.T) {
 			svc.Status.LoadBalancer.Ingress = []v1.LoadBalancerIngress{{
 				IP: svcLBIP,
 			}}
-			svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
+			svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyLocal
 		}),
 	)
 
@@ -2501,6 +2513,8 @@ func TestOnlyLocalLoadBalancing(t *testing.T) {
 	// Check iptables chain and rules
 	epIpt := netlinktest.ExpectedIptablesChain{
 		string(kubeServicesChain): {{
+			JumpChain: "RETURN", SourceAddress: "127.0.0.0/8",
+		}, {
 			JumpChain: string(kubeLoadBalancerChain), MatchSet: kubeLoadBalancerSet,
 		}, {
 			JumpChain: string(kubeMarkMasqChain), MatchSet: kubeClusterIPSet,
@@ -2577,7 +2591,7 @@ func TestBuildServiceMapAddRemove(t *testing.T) {
 					{IP: "10.1.2.3"},
 				},
 			}
-			svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
+			svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyLocal
 			svc.Spec.HealthCheckNodePort = 345
 		}),
 	}
@@ -2585,9 +2599,9 @@ func TestBuildServiceMapAddRemove(t *testing.T) {
 	for i := range services {
 		fp.OnServiceAdd(services[i])
 	}
-	result := fp.serviceMap.Update(fp.serviceChanges)
-	if len(fp.serviceMap) != 12 {
-		t.Errorf("expected service map length 12, got %v", fp.serviceMap)
+	result := fp.svcPortMap.Update(fp.serviceChanges)
+	if len(fp.svcPortMap) != 12 {
+		t.Errorf("expected service map length 12, got %v", fp.svcPortMap)
 	}
 
 	// The only-local-loadbalancer ones get added
@@ -2618,9 +2632,9 @@ func TestBuildServiceMapAddRemove(t *testing.T) {
 	fp.OnServiceDelete(services[2])
 	fp.OnServiceDelete(services[3])
 
-	result = fp.serviceMap.Update(fp.serviceChanges)
-	if len(fp.serviceMap) != 1 {
-		t.Errorf("expected service map length 1, got %v", fp.serviceMap)
+	result = fp.svcPortMap.Update(fp.serviceChanges)
+	if len(fp.svcPortMap) != 1 {
+		t.Errorf("expected service map length 1, got %v", fp.svcPortMap)
 	}
 
 	if len(result.HCServiceNodePorts) != 0 {
@@ -2665,9 +2679,9 @@ func TestBuildServiceMapServiceHeadless(t *testing.T) {
 	)
 
 	// Headless service should be ignored
-	result := fp.serviceMap.Update(fp.serviceChanges)
-	if len(fp.serviceMap) != 0 {
-		t.Errorf("expected service map length 0, got %d", len(fp.serviceMap))
+	result := fp.svcPortMap.Update(fp.serviceChanges)
+	if len(fp.svcPortMap) != 0 {
+		t.Errorf("expected service map length 0, got %d", len(fp.svcPortMap))
 	}
 
 	// No proxied services, so no healthchecks
@@ -2695,9 +2709,9 @@ func TestBuildServiceMapServiceTypeExternalName(t *testing.T) {
 		}),
 	)
 
-	result := fp.serviceMap.Update(fp.serviceChanges)
-	if len(fp.serviceMap) != 0 {
-		t.Errorf("expected service map length 0, got %v", fp.serviceMap)
+	result := fp.svcPortMap.Update(fp.serviceChanges)
+	if len(fp.svcPortMap) != 0 {
+		t.Errorf("expected service map length 0, got %v", fp.svcPortMap)
 	}
 	// No proxied services, so no healthchecks
 	if len(result.HCServiceNodePorts) != 0 {
@@ -2731,15 +2745,15 @@ func TestBuildServiceMapServiceUpdate(t *testing.T) {
 				{IP: "10.1.2.3"},
 			},
 		}
-		svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
+		svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyLocal
 		svc.Spec.HealthCheckNodePort = 345
 	})
 
 	fp.OnServiceAdd(servicev1)
 
-	result := fp.serviceMap.Update(fp.serviceChanges)
-	if len(fp.serviceMap) != 2 {
-		t.Errorf("expected service map length 2, got %v", fp.serviceMap)
+	result := fp.svcPortMap.Update(fp.serviceChanges)
+	if len(fp.svcPortMap) != 2 {
+		t.Errorf("expected service map length 2, got %v", fp.svcPortMap)
 	}
 	if len(result.HCServiceNodePorts) != 0 {
 		t.Errorf("expected healthcheck ports length 0, got %v", result.HCServiceNodePorts)
@@ -2751,9 +2765,9 @@ func TestBuildServiceMapServiceUpdate(t *testing.T) {
 
 	// Change service to load-balancer
 	fp.OnServiceUpdate(servicev1, servicev2)
-	result = fp.serviceMap.Update(fp.serviceChanges)
-	if len(fp.serviceMap) != 2 {
-		t.Errorf("expected service map length 2, got %v", fp.serviceMap)
+	result = fp.svcPortMap.Update(fp.serviceChanges)
+	if len(fp.svcPortMap) != 2 {
+		t.Errorf("expected service map length 2, got %v", fp.svcPortMap)
 	}
 	if len(result.HCServiceNodePorts) != 1 {
 		t.Errorf("expected healthcheck ports length 1, got %v", result.HCServiceNodePorts)
@@ -2765,9 +2779,9 @@ func TestBuildServiceMapServiceUpdate(t *testing.T) {
 	// No change; make sure the service map stays the same and there are
 	// no health-check changes
 	fp.OnServiceUpdate(servicev2, servicev2)
-	result = fp.serviceMap.Update(fp.serviceChanges)
-	if len(fp.serviceMap) != 2 {
-		t.Errorf("expected service map length 2, got %v", fp.serviceMap)
+	result = fp.svcPortMap.Update(fp.serviceChanges)
+	if len(fp.svcPortMap) != 2 {
+		t.Errorf("expected service map length 2, got %v", fp.svcPortMap)
 	}
 	if len(result.HCServiceNodePorts) != 1 {
 		t.Errorf("expected healthcheck ports length 1, got %v", result.HCServiceNodePorts)
@@ -2778,9 +2792,9 @@ func TestBuildServiceMapServiceUpdate(t *testing.T) {
 
 	// And back to ClusterIP
 	fp.OnServiceUpdate(servicev2, servicev1)
-	result = fp.serviceMap.Update(fp.serviceChanges)
-	if len(fp.serviceMap) != 2 {
-		t.Errorf("expected service map length 2, got %v", fp.serviceMap)
+	result = fp.svcPortMap.Update(fp.serviceChanges)
+	if len(fp.svcPortMap) != 2 {
+		t.Errorf("expected service map length 2, got %v", fp.svcPortMap)
 	}
 	if len(result.HCServiceNodePorts) != 0 {
 		t.Errorf("expected healthcheck ports length 0, got %v", result.HCServiceNodePorts)
@@ -4579,7 +4593,7 @@ func TestHealthCheckNodePortE2E(t *testing.T) {
 			Ports:                 []v1.ServicePort{{Name: "", TargetPort: intstr.FromInt(80), Protocol: v1.ProtocolTCP}},
 			Type:                  "LoadBalancer",
 			HealthCheckNodePort:   30000,
-			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyTypeLocal,
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyLocal,
 		},
 	}
 	fp.OnServiceAdd(&svc)
@@ -4791,7 +4805,7 @@ func TestTestInternalTrafficPolicyE2E(t *testing.T) {
 
 	testCases := []struct {
 		name                     string
-		internalTrafficPolicy    *v1.ServiceInternalTrafficPolicyType
+		internalTrafficPolicy    *v1.ServiceInternalTrafficPolicy
 		endpoints                []endpoint
 		expectVirtualServer      bool
 		expectLocalEntries       bool
@@ -4862,8 +4876,6 @@ func TestTestInternalTrafficPolicyE2E(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.ServiceInternalTrafficPolicy, true)()
-
 		ipt := iptablestest.NewFake()
 		ipvs := ipvstest.NewFake()
 		ipset := ipsettest.NewFake(testIPSetVersion)
@@ -4982,7 +4994,7 @@ func Test_EndpointSliceReadyAndTerminatingCluster(t *testing.T) {
 			ClusterIP:             "172.20.1.1",
 			Selector:              map[string]string{"foo": "bar"},
 			Type:                  v1.ServiceTypeNodePort,
-			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyTypeCluster,
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyCluster,
 			InternalTrafficPolicy: &clusterInternalTrafficPolicy,
 			ExternalIPs: []string{
 				"1.2.3.4",
@@ -5159,7 +5171,7 @@ func Test_EndpointSliceReadyAndTerminatingLocal(t *testing.T) {
 			ClusterIP:             "172.20.1.1",
 			Selector:              map[string]string{"foo": "bar"},
 			Type:                  v1.ServiceTypeNodePort,
-			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyTypeLocal,
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyLocal,
 			InternalTrafficPolicy: &clusterInternalTrafficPolicy,
 			ExternalIPs: []string{
 				"1.2.3.4",
@@ -5335,7 +5347,7 @@ func Test_EndpointSliceOnlyReadyAndTerminatingCluster(t *testing.T) {
 			ClusterIP:             "172.20.1.1",
 			Selector:              map[string]string{"foo": "bar"},
 			Type:                  v1.ServiceTypeNodePort,
-			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyTypeCluster,
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyCluster,
 			InternalTrafficPolicy: &clusterInternalTrafficPolicy,
 			ExternalIPs: []string{
 				"1.2.3.4",
@@ -5511,7 +5523,7 @@ func Test_EndpointSliceOnlyReadyAndTerminatingLocal(t *testing.T) {
 			ClusterIP:             "172.20.1.1",
 			Selector:              map[string]string{"foo": "bar"},
 			Type:                  v1.ServiceTypeNodePort,
-			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyTypeLocal,
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyLocal,
 			InternalTrafficPolicy: &clusterInternalTrafficPolicy,
 			ExternalIPs: []string{
 				"1.2.3.4",
@@ -5684,7 +5696,7 @@ func Test_EndpointSliceOnlyReadyAndTerminatingLocalWithFeatureGateDisabled(t *te
 			ClusterIP:             "172.20.1.1",
 			Selector:              map[string]string{"foo": "bar"},
 			Type:                  v1.ServiceTypeNodePort,
-			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyTypeLocal,
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyLocal,
 			InternalTrafficPolicy: &clusterInternalTrafficPolicy,
 			ExternalIPs: []string{
 				"1.2.3.4",
@@ -5930,13 +5942,13 @@ func TestNoEndpointsMetric(t *testing.T) {
 	}
 
 	internalTrafficPolicyLocal := v1.ServiceInternalTrafficPolicyLocal
-	externalTrafficPolicyLocal := v1.ServiceExternalTrafficPolicyTypeLocal
+	externalTrafficPolicyLocal := v1.ServiceExternalTrafficPolicyLocal
 	metrics.RegisterMetrics()
 
 	testCases := []struct {
 		name                                                string
-		internalTrafficPolicy                               *v1.ServiceInternalTrafficPolicyType
-		externalTrafficPolicy                               v1.ServiceExternalTrafficPolicyType
+		internalTrafficPolicy                               *v1.ServiceInternalTrafficPolicy
+		externalTrafficPolicy                               v1.ServiceExternalTrafficPolicy
 		endpoints                                           []endpoint
 		expectedSyncProxyRulesNoLocalEndpointsTotalInternal int
 		expectedSyncProxyRulesNoLocalEndpointsTotalExternal int
@@ -6011,8 +6023,6 @@ func TestNoEndpointsMetric(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.ServiceInternalTrafficPolicy, true)()
-
 		ipt := iptablestest.NewFake()
 		ipvs := ipvstest.NewFake()
 		ipset := ipsettest.NewFake(testIPSetVersion)
@@ -6087,5 +6097,46 @@ func TestNoEndpointsMetric(t *testing.T) {
 		if tc.expectedSyncProxyRulesNoLocalEndpointsTotalExternal != int(syncProxyRulesNoLocalEndpointsTotalExternal) {
 			t.Errorf("sync_proxy_rules_no_endpoints_total metric mismatch(external): got=%d, expected %d", int(syncProxyRulesNoLocalEndpointsTotalExternal), tc.expectedSyncProxyRulesNoLocalEndpointsTotalExternal)
 		}
+	}
+}
+
+func TestDismissLocalhostRuleExist(t *testing.T) {
+	tests := []struct {
+		name     string
+		ipFamily v1.IPFamily
+		src      string
+	}{
+		{
+			name:     "ipv4 rule",
+			ipFamily: v1.IPv4Protocol,
+			src:      "127.0.0.0/8",
+		},
+		{
+			name:     "ipv6 rule",
+			ipFamily: v1.IPv6Protocol,
+			src:      "::1/128",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ipt := iptablestest.NewFake()
+			if test.ipFamily == v1.IPv6Protocol {
+				ipt = iptablestest.NewIPv6Fake()
+			}
+			ipvs := ipvstest.NewFake()
+			ipset := ipsettest.NewFake(testIPSetVersion)
+			fp := NewFakeProxier(ipt, ipvs, ipset, nil, nil, test.ipFamily)
+
+			fp.syncProxyRules()
+
+			rules := getRules(ipt, kubeServicesChain)
+			if len(rules) <= 0 {
+				t.Errorf("skip loop back ip in kubeservice chain not exist")
+				return
+			}
+			if !rules[0].Jump.Matches("RETURN") || !rules[0].SourceAddress.Matches(test.src) {
+				t.Errorf("rules not match, expect jump: %s, got: %s; expect source address: %s, got: %s", "RETURN", rules[0].Jump.String(), test.src, rules[0].SourceAddress.String())
+			}
+		})
 	}
 }
